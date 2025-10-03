@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Contratos e Estoque</title>
+    <!-- Carrega o Tailwind CSS para estilização moderna e responsiva -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fonte Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fc;
+        }
+        .container-card {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            background-color: white;
+            border-radius: 12px;
+        }
+        .header-bg {
+            background-image: linear-gradient(to right, #1d4ed8, #3b82f6);
+        }
+
+        /* CSS para remover as setas (spin buttons) do input number */
+        .hide-spin-buttons::-webkit-outer-spin-button,
+        .hide-spin-buttons::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .hide-spin-buttons[type=number] {
+            -moz-appearance: textfield; /* Para Firefox */
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="min-h-screen p-4 sm:p-8">
+        <!-- Cabeçalho Principal -->
+        <header class="header-bg p-6 rounded-t-xl text-white shadow-lg mb-6">
+            <h1 class="text-3xl font-bold">Controle de Itens Contratados</h1>
+            <p class="mt-1 text-sm opacity-90">Gerencie estoque, consumo e valores restantes do seu contrato.</p>
+            
+            <!-- NOVO: Métricas Globais (Valor Total e Valor Restante) -->
+            <div id="global-metrics" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- Valor Total do Contrato -->
+                <div class="bg-white/20 p-3 rounded-lg flex flex-col">
+                    <span class="text-sm opacity-80">Valor Total do Contrato</span>
+                    <span id="totalValueDisplay" class="text-xl font-bold">R$ 0,00</span>
+                </div>
+                <!-- Valor Total Restante -->
+                <div class="bg-white/20 p-3 rounded-lg flex flex-col">
+                    <span class="text-sm opacity-80">Valor Total Restante</span>
+                    <span id="remainingValueDisplay" class="text-xl font-bold">R$ 0,00</span>
+                </div>
+            </div>
+            
+            <div id="user-info" class="mt-3 text-xs bg-white/20 p-2 rounded-lg inline-block">
+                <!-- Informações de autenticação serão injetadas aqui -->
+            </div>
+        </header>
+
+        <!-- Formulário de Cadastro de Novo Item -->
+        <div class="container-card p-6 mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Adicionar Novo Item</h2>
+            <form id="addItemForm" class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div class="md:col-span-2">
+                    <label for="itemName" class="block text-sm font-medium text-gray-700">Nome do Item</label>
+                    <input type="text" id="itemName" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                
+                <!-- Campos de Quantidade e Unidade -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label for="initialQuantity" class="block text-sm font-medium text-gray-700">Qtd. Inicial</label>
+                        <input type="number" id="initialQuantity" required min="0.01" step="0.01" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-blue-500 focus:border-blue-500 hide-spin-buttons">
+                    </div>
+                    <div>
+                        <label for="itemUnit" class="block text-sm font-medium text-gray-700">Unidade</label>
+                        <select id="itemUnit" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-blue-500 focus:border-blue-500 bg-white">
+                            <!-- Opções SIMPLIFICADAS: apenas Un e m² -->
+                            <option value="Un">Un</option>
+                            <option value="m²">m²</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="unitValue" class="block text-sm font-medium text-gray-700">Valor Unitário (R$)</label>
+                    <!-- Campo de valor unitário com a classe para remover as setas -->
+                    <input type="number" id="unitValue" required min="0.01" step="0.01" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-blue-500 focus:border-blue-500 hide-spin-buttons">
+                </div>
+                <div class="flex items-end">
+                    <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition duration-150 shadow-md">
+                        Cadastrar Item
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- PAINEL DE BAIXA MÚLTIPLA DE ITENS -->
+        <div id="quickUsageSection" class="container-card p-6 mb-8 border-t-4 border-green-500">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Baixa Múltipla de Itens</h2>
+            <form id="quickUsageForm">
+                <!-- Identificador da Baixa (Global para esta transação) -->
+                <div class="mb-4">
+                    <label for="transactionId" class="block text-sm font-medium text-gray-700">Identificador da Baixa</label>
+                    <input type="text" id="transactionId" required placeholder="Ex: Obra-A01" 
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-green-500 focus:border-green-500">
+                </div>
+                
+                <!-- Container para os itens de baixa dinâmicos -->
+                <div id="itemUsageContainer" class="space-y-4 mb-6 p-4 border rounded-md bg-gray-50">
+                    <p id="noItemsMessage" class="text-center text-gray-500 italic">Clique em 'Adicionar Item' para começar a baixa.</p>
+                    <!-- Linhas de itens serão injetadas aqui dinamicamente -->
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <button type="button" id="addItemLineBtn" class="bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 transition duration-150 shadow-md" disabled>
+                        Adicionar Item para Baixa
+                    </button>
+                    <button type="submit" id="submitUsageBtn" class="flex-grow bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition duration-150 shadow-md" disabled>
+                        Registrar Todas as Baixas
+                    </button>
+                </div>
+            </form>
+        </div>
+        <!-- FIM DO PAINEL DE BAIXA MÚLTIPLA -->
+
+        <!-- SEÇÃO DE HISTÓRICO E BUSCA POR IDENTIFICADOR -->
+        <div class="container-card p-6 mb-8 border-t-4 border-yellow-500">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Histórico de Baixas por Identificador</h2>
+            <div class="flex flex-col sm:flex-row gap-4 items-end">
+                <div class="flex-grow w-full">
+                    <label for="searchTransactionId" class="block text-sm font-medium text-gray-700">Buscar por ID de Baixa</label>
+                    <input type="text" id="searchTransactionId" placeholder="Digite o ID (Ex: Obra-A01)" 
+                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-yellow-500 focus:border-yellow-500">
+                </div>
+                <button id="searchHistoryBtn" class="w-full sm:w-auto bg-yellow-600 text-white py-2 px-4 rounded-md hover:bg-yellow-700 transition duration-150 shadow-md">
+                    Buscar Histórico
+                </button>
+            </div>
+            <div id="transactionHistoryList" class="mt-4 space-y-3">
+                <p class="text-gray-500 italic">Nenhum histórico pesquisado.</p>
+            </div>
+        </div>
+        <!-- FIM DA SEÇÃO DE BUSCA -->
+
+        <!-- Lista de Itens do Contrato -->
+        <div class="container-card p-6">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Itens Cadastrados (<span id="itemCount">0</span>)</h2>
+            <div id="itemsList" class="space-y-4">
+                <p id="loadingMessage" class="text-center text-gray-500">Carregando itens...</p>
+                <!-- Itens serão renderizados aqui -->
+            </div>
+        </div>
+        
+        <!-- Modal de Confirmação (para evitar alert()) -->
+        <div id="confirmationModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-50">
+            <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+                <div class="mt-3 text-center">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900" id="modalTitle">Confirmação</h3>
+                    <div class="mt-2 px-7 py-3">
+                        <p class="text-sm text-gray-500" id="modalMessage">Tem certeza que deseja prosseguir?</p>
+                    </div>
+                    <div class="items-center px-4 py-3">
+                        <button id="modalConfirmBtn" class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md w-24 shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 mr-2">
+                            Sim
+                        </button>
+                        <button id="modalCancelBtn" class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md w-24 shadow-sm hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Script de Inicialização e Lógica Firebase -->
+    <script type="module">
+        // Importações obrigatórias do Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // Adicionada a importação de getDocs para a função de busca
+        import { getFirestore, doc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, query, serverTimestamp, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Configuração de Log e Variáveis Globais (fornecidas pelo ambiente)
+        setLogLevel('Debug');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Elementos DOM
+        const itemsListEl = document.getElementById('itemsList');
+        const loadingMessageEl = document.getElementById('loadingMessage');
+        const addItemForm = document.getElementById('addItemForm');
+        const userInfoEl = document.getElementById('user-info');
+        const itemCountEl = document.getElementById('itemCount');
+        
+        // Elementos DOM para Métricas Globais (NOVOS)
+        const totalValueDisplayEl = document.getElementById('totalValueDisplay');
+        const remainingValueDisplayEl = document.getElementById('remainingValueDisplay');
+
+
+        // Elementos do Painel de Baixa Rápida
+        const quickUsageForm = document.getElementById('quickUsageForm'); 
+        const transactionIdEl = document.getElementById('transactionId'); 
+        const itemUsageContainerEl = document.getElementById('itemUsageContainer');
+        const addItemLineBtnEl = document.getElementById('addItemLineBtn');
+        const submitUsageBtnEl = document.getElementById('submitUsageBtn');
+        const noItemsMessageEl = document.getElementById('noItemsMessage');
+
+        // Elementos do Painel de Busca
+        const searchTransactionIdEl = document.getElementById('searchTransactionId');
+        const searchHistoryBtn = document.getElementById('searchHistoryBtn');
+        const transactionHistoryListEl = document.getElementById('transactionHistoryList');
+
+        // Modal Elements
+        const modal = document.getElementById('confirmationModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalMessage = document.getElementById('modalMessage');
+        const modalConfirmBtn = document.getElementById('modalConfirmBtn');
+        const modalCancelBtn = document.getElementById('modalCancelBtn');
+
+        // Variáveis de estado do Firebase e cache de itens
+        let app = null;
+        let db = null;
+        let auth = null;
+        let userId = null;
+        let isAuthReady = false;
+        let cachedItems = []; // Cache para facilitar a lógica de baixa rápida
+        let lineCounter = 0; // Contador para IDs únicos das linhas de item
+
+        // --- Funções de Ajuda ---
+
+        // Função para formatar números para moeda BRL
+        const formatCurrency = (value) => {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        };
+        
+        // Função para exibir modal de confirmação
+        const showConfirmationModal = (title, message, onConfirm) => {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            
+            modalConfirmBtn.onclick = () => {
+                onConfirm();
+                modal.classList.add('hidden');
+            };
+
+            modalCancelBtn.onclick = () => {
+                modal.classList.add('hidden');
+            };
+
+            modal.classList.remove('hidden');
+        };
+
+        // --- Inicialização do Firebase e Autenticação ---
+
+        try {
+            if (Object.keys(firebaseConfig).length > 0) {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // 1. Configurar o Listener de Estado de Autenticação
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userInfoEl.innerHTML = `<strong>Usuário ID:</strong> ${userId}`;
+                        isAuthReady = true;
+                        console.log("Usuário autenticado:", userId);
+                        // Inicia o listener de dados após a autenticação
+                        setupDataListener();
+                    } else {
+                        // Se não estiver autenticado, tenta anonimamente ou com token
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    }
+                });
+            } else {
+                userInfoEl.textContent = "Erro: Configuração do Firebase não encontrada.";
+            }
+        } catch (error) {
+            console.error("Erro na inicialização do Firebase:", error);
+            userInfoEl.textContent = "Erro ao conectar ao Firebase.";
+        }
+
+        // --- Funções de Persistência (Firestore) ---
+
+        // Retorna a referência da coleção de itens (privada por usuário)
+        const getItemsCollectionRef = () => {
+            if (!db || !userId) {
+                console.error("Firestore ou User ID não estão prontos.");
+                return null;
+            }
+            // Caminho: /artifacts/{appId}/users/{userId}/contract_items
+            const collectionPath = `artifacts/${appId}/users/${userId}/contract_items`;
+            return collection(db, collectionPath);
+        };
+        
+        // Retorna a referência da coleção de transações de uso
+        const getTransactionsCollectionRef = () => {
+            if (!db || !userId) {
+                console.error("Firestore ou User ID não estão prontos.");
+                return null;
+            }
+            // Caminho: /artifacts/{appId}/users/{userId}/usage_transactions
+            const collectionPath = `artifacts/${appId}/users/${userId}/usage_transactions`;
+            return collection(db, collectionPath);
+        };
+
+        // Adiciona um novo item (mantido da versão anterior)
+        const addItem = async (item) => {
+            const itemsColRef = getItemsCollectionRef();
+            if (!itemsColRef) return;
+
+            try {
+                await addDoc(itemsColRef, {
+                    itemName: item.itemName,
+                    initialQuantity: item.initialQuantity,
+                    unitValue: item.unitValue,
+                    itemUnit: item.itemUnit,
+                    consumedQuantity: 0, 
+                    timestamp: serverTimestamp()
+                });
+                console.log("Item adicionado com sucesso:", item.itemName);
+            } catch (error) {
+                console.error("Erro ao adicionar item:", error);
+            }
+        };
+
+        // Registra o consumo TOTAL (acumulado) de um item no estoque principal
+        const recordUsage = async (docId, totalConsumption) => {
+            const itemsColRef = getItemsCollectionRef();
+            if (!itemsColRef) return;
+
+            try {
+                const itemRef = doc(itemsColRef, docId);
+                await updateDoc(itemRef, {
+                    consumedQuantity: totalConsumption
+                });
+                console.log(`Consumo TOTAL (${totalConsumption}) registrado no estoque para o item ID: ${docId}`);
+            } catch (error) {
+                console.error("Erro ao registrar consumo no estoque:", error);
+            }
+        };
+
+        // Exclui um item (mantido da versão anterior)
+        const deleteItem = async (docId, itemName) => {
+            showConfirmationModal(
+                "Excluir Item",
+                `Tem certeza que deseja excluir permanentemente o item "${itemName}"? Esta ação não pode ser desfeita.`,
+                async () => {
+                    const itemsColRef = getItemsCollectionRef();
+                    if (!itemsColRef) return;
+                    try {
+                        await deleteDoc(doc(itemsColRef, docId));
+                        console.log(`Item ID: ${docId} excluído com sucesso.`);
+                    } catch (error) {
+                        console.error("Erro ao excluir item:", error);
+                    }
+                }
+            );
+        };
+
+        // --- Funções de Baixa Múltipla Dinâmica ---
+
+        // Gera as opções HTML para o dropdown de itens
+        const renderQuickUsageDropdownOptions = (items) => {
+            let optionsHtml = '';
+            items.forEach(item => {
+                const remaining = Math.max(0, item.initialQuantity - item.consumedQuantity);
+                optionsHtml += `<option value="${item.id}" 
+                                        data-unit="${item.itemUnit || 'Un'}"
+                                        data-initial-quantity="${item.initialQuantity}"
+                                        data-consumed-quantity="${item.consumedQuantity}">
+                                    ${item.itemName} (${remaining.toFixed(2)} ${item.itemUnit || 'Un'} restantes)
+                                </option>`;
+            });
+            return optionsHtml;
+        };
+
+        // Template HTML para uma única linha de item de baixa
+        const createItemLineHtml = (lineNumber, optionsHtml) => {
+            return `
+                <div data-line-number="${lineNumber}" class="item-usage-line grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-md bg-white shadow-sm">
+                    
+                    <div class="md:col-span-2">
+                        <label for="selectItemToUse-${lineNumber}" class="block text-sm font-medium text-gray-700">Item</label>
+                        <select id="selectItemToUse-${lineNumber}" name="itemId" required data-unit-display-id="selectedItemUnit-${lineNumber}" 
+                                class="item-select mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-green-500 focus:border-green-500 bg-white">
+                            <option value="" disabled selected>Selecione o item...</option>
+                            ${optionsHtml}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="deltaQuantity-${lineNumber}" class="block text-sm font-medium text-gray-700">Qtd. a Utilizar</label>
+                        <input type="number" id="deltaQuantity-${lineNumber}" name="quantity" required min="0.01" step="0.01" 
+                               placeholder="0.00"
+                               class="quantity-input mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-green-500 focus:border-green-500 hide-spin-buttons">
+                    </div>
+                    
+                    <div class="flex flex-col justify-between items-start">
+                        <div class="text-sm font-medium text-gray-700">
+                            Unidade: <span id="selectedItemUnit-${lineNumber}" class="unit-display font-bold text-green-600">--</span>
+                        </div>
+                        <button type="button" class="remove-item-line mt-2 text-red-500 hover:text-red-700 text-sm font-medium" data-line-number="${lineNumber}">
+                            Remover Item
+                        </button>
+                    </div>
+                </div>
+            `;
+        };
+
+        // Função para adicionar uma nova linha de item de baixa
+        const addItemLine = () => {
+            if (cachedItems.length === 0) {
+                showConfirmationModal("Atenção", "Você precisa cadastrar itens primeiro antes de dar baixa.", () => {});
+                return;
+            }
+            
+            noItemsMessageEl.classList.add('hidden');
+            const optionsHtml = renderQuickUsageDropdownOptions(cachedItems);
+            lineCounter++;
+            const newHtml = createItemLineHtml(lineCounter, optionsHtml);
+            itemUsageContainerEl.insertAdjacentHTML('beforeend', newHtml);
+            
+            const newLineEl = itemUsageContainerEl.querySelector(`[data-line-number="${lineCounter}"]`);
+            
+            // Adiciona listeners para a nova linha
+            const selectEl = newLineEl.querySelector('.item-select');
+            const removeBtn = newLineEl.querySelector('.remove-item-line');
+
+            selectEl.addEventListener('change', updateUnitDisplay);
+            removeBtn.addEventListener('click', removeItemLine);
+            
+            // Habilita o botão de submissão se houver itens
+            checkUsageContainerState();
+        };
+
+        // Atualiza a unidade de medida ao selecionar o item
+        const updateUnitDisplay = (e) => {
+            const selectEl = e.target;
+            const unitDisplayId = selectEl.dataset.unitDisplayId;
+            const unitDisplayEl = document.getElementById(unitDisplayId);
+            const selectedOption = selectEl.options[selectEl.selectedIndex];
+            
+            const quantityInputEl = selectEl.closest('.item-usage-line').querySelector('.quantity-input');
+
+            if (selectedOption && selectedOption.dataset.unit) {
+                const unit = selectedOption.dataset.unit;
+                unitDisplayEl.textContent = unit;
+                quantityInputEl.placeholder = `Ex: 5.5 ${unit}`;
+                quantityInputEl.focus(); 
+            } else {
+                unitDisplayEl.textContent = '--';
+                quantityInputEl.placeholder = '0.00';
+            }
+        };
+
+        // Remove uma linha de item de baixa
+        const removeItemLine = (e) => {
+            const lineNumber = e.target.dataset.lineNumber;
+            const lineEl = itemUsageContainerEl.querySelector(`[data-line-number="${lineNumber}"]`);
+            if (lineEl) {
+                lineEl.remove();
+            }
+            // Verifica se o container ficou vazio
+            checkUsageContainerState();
+        };
+
+        const checkUsageContainerState = () => {
+            const lines = itemUsageContainerEl.querySelectorAll('.item-usage-line');
+            if (lines.length === 0) {
+                noItemsMessageEl.classList.remove('hidden');
+                submitUsageBtnEl.disabled = true;
+            } else {
+                noItemsMessageEl.classList.add('hidden');
+                submitUsageBtnEl.disabled = false;
+            }
+        };
+
+        // --- Renderização e Listener de Dados (onSnapshot) ---
+
+        const populateQuickUsageDropdown = (items) => {
+            // Habilita/desabilita o botão de adicionar linha
+            addItemLineBtnEl.disabled = items.length === 0;
+
+            // Se o container estiver vazio, mas houver itens no cache, adiciona a primeira linha
+            if (itemUsageContainerEl.querySelectorAll('.item-usage-line').length === 0 && items.length > 0) {
+                // Não adiciona automaticamente a primeira linha, mas garante que os botões funcionem
+                checkUsageContainerState();
+            }
+        };
+
+        const renderItems = (items) => {
+            itemsListEl.innerHTML = '';
+            loadingMessageEl.classList.add('hidden');
+            itemCountEl.textContent = items.length;
+            
+            // Variáveis para os totais globais
+            let globalTotalValue = 0;
+            let globalRemainingValue = 0;
+
+            // 1. Atualiza o cache de itens
+            cachedItems = items; 
+
+            // 2. Atualiza o estado da seção de baixa (disponibilidade dos botões)
+            populateQuickUsageDropdown(items);
+
+            if (items.length === 0) {
+                itemsListEl.innerHTML = '<p class="text-center text-gray-500 p-8 border border-dashed rounded-md">Nenhum item cadastrado ainda. Adicione um acima!</p>';
+                // Se não houver itens, garante que os displays globais sejam R$ 0,00
+                totalValueDisplayEl.textContent = formatCurrency(0);
+                remainingValueDisplayEl.textContent = formatCurrency(0);
+                return;
+            }
+
+            items.forEach(item => {
+                const unit = item.itemUnit || 'Un';
+
+                // Cálculos
+                const remainingQuantity = Math.max(0, item.initialQuantity - item.consumedQuantity);
+                const totalValue = item.initialQuantity * item.unitValue;
+                const remainingValue = remainingQuantity * item.unitValue;
+                const progressPercentage = (remainingQuantity / item.initialQuantity) * 100;
+                
+                // Acumula os totais globais
+                globalTotalValue += totalValue;
+                globalRemainingValue += remainingValue;
+
+                // Determina a cor com base no estoque restante
+                let progressBarColor = 'bg-blue-600';
+                if (progressPercentage < 25) {
+                    progressBarColor = 'bg-red-600';
+                } else if (progressPercentage < 50) {
+                    progressBarColor = 'bg-yellow-500';
+                }
+
+                const cardHtml = `
+                    <div class="p-4 border rounded-lg shadow-sm hover:shadow-md transition duration-150 ${remainingQuantity === 0 ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'}">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                            <h3 class="text-xl font-bold text-gray-800">${item.itemName}</h3>
+                            <button data-id="${item.id}" data-name="${item.itemName}" class="delete-btn text-red-500 hover:text-red-700 text-sm mt-1 sm:mt-0 px-2 py-1 rounded border border-red-500 hover:bg-red-50">
+                                Excluir
+                            </button>
+                        </div>
+
+                        <!-- Detalhes do Item -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-sm">
+                            <div class="p-2 bg-gray-50 rounded-md">
+                                <p class="text-xs text-gray-500">Valor Unitário</p>
+                                <p class="font-semibold">${formatCurrency(item.unitValue)}</p>
+                            </div>
+                            <div class="p-2 bg-gray-50 rounded-md">
+                                <p class="text-xs text-gray-500">Qtd. Inicial (${unit})</p>
+                                <p class="font-semibold">${item.initialQuantity.toFixed(2)}</p>
+                            </div>
+                            <div class="p-2 bg-blue-50 rounded-md">
+                                <p class="text-xs text-gray-500">Qtd. Restante (${unit})</p>
+                                <p class="font-bold text-blue-600">${remainingQuantity.toFixed(2)}</p>
+                            </div>
+                            <div class="p-2 bg-blue-50 rounded-md">
+                                <p class="text-xs text-gray-500">Valor Restante</p>
+                                <p class="font-bold text-blue-600">${formatCurrency(remainingValue)}</p>
+                            </div>
+                        </div>
+
+                        <!-- Barra de Progresso/Estoque -->
+                        <div class="mt-4">
+                            <p class="text-xs font-medium text-gray-600 mb-1">
+                                Consumo Acumulado: ${item.consumedQuantity.toFixed(2)} ${unit} (${(100 - progressPercentage).toFixed(1)}% utilizado)
+                            </p>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div class="${progressBarColor} h-2.5 rounded-full transition-all duration-500" style="width: ${progressPercentage.toFixed(1)}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                itemsListEl.insertAdjacentHTML('beforeend', cardHtml);
+            });
+            
+            // 3. Atualiza os displays globais
+            totalValueDisplayEl.textContent = formatCurrency(globalTotalValue);
+            remainingValueDisplayEl.textContent = formatCurrency(globalRemainingValue);
+
+            // Adicionar Listeners de Evento para os botões de Ação (Apenas Excluir)
+            document.querySelectorAll('.delete-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const id = e.target.dataset.id;
+                    const name = e.target.dataset.name;
+                    deleteItem(id, name);
+                });
+            });
+        };
+
+        // Configura o listener em tempo real
+        const setupDataListener = () => {
+            if (!isAuthReady || !db || !userId) {
+                console.warn("Autenticação não finalizada, listener adiado.");
+                return;
+            }
+
+            const itemsColRef = getItemsCollectionRef();
+            if (!itemsColRef) return;
+
+            const q = query(itemsColRef); 
+
+            onSnapshot(q, (snapshot) => {
+                const items = [];
+                snapshot.forEach(doc => {
+                    items.push({ id: doc.id, ...doc.data() });
+                });
+
+                // Ordena os itens pelo timestamp de criação (mais recente primeiro)
+                items.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
+                renderItems(items);
+            }, (error) => {
+                console.error("Erro ao carregar dados em tempo real:", error);
+                loadingMessageEl.textContent = "Erro ao carregar itens. Verifique o console.";
+            });
+        };
+
+        // --- Funções de Histórico e Busca ---
+
+        const searchHistory = async () => {
+            const searchId = searchTransactionIdEl.value.trim();
+            transactionHistoryListEl.innerHTML = `<p class="text-center text-gray-500 italic">Buscando histórico para "${searchId}"...</p>`;
+            
+            if (!searchId) {
+                transactionHistoryListEl.innerHTML = `<p class="text-red-500 italic">Por favor, insira um ID de Baixa para pesquisar.</p>`;
+                return;
+            }
+
+            const transactionsColRef = getTransactionsCollectionRef();
+            if (!transactionsColRef) {
+                 transactionHistoryListEl.innerHTML = `<p class="text-red-500 italic">Sistema indisponível (Firestore/Auth).</p>`;
+                 return;
+            }
+
+            try {
+                const q = query(transactionsColRef, where("transactionId", "==", searchId));
+                const snapshot = await getDocs(q); 
+
+                if (snapshot.empty) {
+                    transactionHistoryListEl.innerHTML = `<p class="text-center text-gray-500 italic">Nenhum item encontrado para o ID "${searchId}".</p>`;
+                    return;
+                }
+
+                let resultsHtml = `<div class="p-3 bg-yellow-100 rounded-md border border-yellow-300 mb-3">
+                                    <h4 class="font-bold text-lg text-yellow-800">Resultados para ID: ${searchId} (${snapshot.size} baixas)</h4>
+                                    </div>`;
+                
+                const transactions = [];
+                snapshot.forEach(doc => transactions.push(doc.data()));
+                transactions.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
+
+                transactions.forEach(tx => {
+                    const date = tx.timestamp ? new Date(tx.timestamp.toDate()).toLocaleString('pt-BR') : 'Data Indisponível';
+
+                    resultsHtml += `
+                        <div class="p-3 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm hover:bg-gray-50 transition">
+                            <span class="font-medium text-gray-800">${tx.itemName}</span>
+                            <span class="text-green-600 font-semibold">${tx.quantityUsed.toFixed(2)} ${tx.itemUnit || 'Un'}</span>
+                            <span class="text-gray-500 text-xs mt-1 sm:mt-0">${date}</span>
+                        </div>
+                    `;
+                });
+
+                transactionHistoryListEl.innerHTML = resultsHtml;
+
+            } catch (error) {
+                console.error("Erro ao buscar histórico:", error);
+                transactionHistoryListEl.innerHTML = `<p class="text-red-500 italic">Erro ao executar a busca. Verifique o console.</p>`;
+            }
+        };
+
+
+        // --- Listeners de Formulário ---
+
+        // 1. Cadastro de Novo Item
+        addItemForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const itemNameEl = document.getElementById('itemName');
+            const initialQuantityEl = document.getElementById('initialQuantity');
+            const unitValueEl = document.getElementById('unitValue');
+            const itemUnitEl = document.getElementById('itemUnit'); 
+
+            const item = {
+                itemName: itemNameEl.value.trim(),
+                initialQuantity: parseFloat(initialQuantityEl.value),
+                unitValue: parseFloat(unitValueEl.value),
+                itemUnit: itemUnitEl.value 
+            };
+
+            if (!item.itemName || isNaN(item.initialQuantity) || item.initialQuantity <= 0 || isNaN(item.unitValue) || item.unitValue <= 0 || !item.itemUnit) {
+                showConfirmationModal("Erro de Cadastro", "Por favor, preencha todos os campos com valores válidos.", () => {});
+                return;
+            }
+
+            await addItem(item);
+            
+            // Limpa o formulário
+            itemNameEl.value = '';
+            initialQuantityEl.value = '';
+            unitValueEl.value = '';
+            itemNameEl.focus();
+        });
+
+        // 2. Baixa Múltipla (Processamento de todas as linhas)
+        quickUsageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const transactionId = transactionIdEl.value.trim();
+            if (!transactionId) {
+                showConfirmationModal("Atenção", "Por favor, insira um Identificador para esta Baixa Múltipla.", () => {});
+                return;
+            }
+
+            const itemLines = itemUsageContainerEl.querySelectorAll('.item-usage-line');
+            if (itemLines.length === 0) {
+                showConfirmationModal("Atenção", "Nenhum item foi adicionado para baixa.", () => {});
+                return;
+            }
+
+            const transactionsToProcess = [];
+            let isValid = true;
+
+            // 1. Validação e Coleta dos Dados
+            itemLines.forEach(line => {
+                const selectEl = line.querySelector('.item-select');
+                const quantityInputEl = line.querySelector('.quantity-input');
+                
+                const itemId = selectEl.value;
+                const deltaQuantity = parseFloat(quantityInputEl.value);
+
+                if (!itemId || isNaN(deltaQuantity) || deltaQuantity <= 0) {
+                    isValid = false;
+                    // Destaca o erro na linha
+                    line.classList.add('border-red-500', 'ring-1', 'ring-red-500');
+                    showConfirmationModal("Erro de Dados", "Verifique se todos os itens estão selecionados e têm uma quantidade válida (> 0).", () => {});
+                    return;
+                }
+                line.classList.remove('border-red-500', 'ring-1', 'ring-red-500');
+
+                const itemData = cachedItems.find(i => i.id === itemId);
+                if (!itemData) {
+                    isValid = false;
+                    showConfirmationModal("Erro", "Item não encontrado no cache. Recarregue a página.", () => {});
+                    return;
+                }
+
+                const newConsumedQuantity = itemData.consumedQuantity + deltaQuantity;
+                const remaining = itemData.initialQuantity - newConsumedQuantity;
+                const unit = itemData.itemUnit || 'Un';
+
+                if (remaining < -0.001) {
+                    isValid = false;
+                    line.classList.add('border-red-500', 'ring-1', 'ring-red-500');
+                    showConfirmationModal("Limite Excedido", 
+                        `O item "${itemData.itemName}" excede o estoque. Restam apenas ${ (itemData.initialQuantity - itemData.consumedQuantity).toFixed(2) } ${unit}.`, 
+                        () => {}
+                    );
+                    return;
+                }
+
+                transactionsToProcess.push({
+                    itemId,
+                    itemName: itemData.itemName,
+                    unit,
+                    deltaQuantity,
+                    newConsumedQuantity
+                });
+            });
+
+            if (!isValid) return;
+
+            // 2. Processamento e Atualização (Estoque e Histórico)
+            submitUsageBtnEl.disabled = true;
+            submitUsageBtnEl.textContent = 'Processando...';
+            
+            const transactionsColRef = getTransactionsCollectionRef();
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const tx of transactionsToProcess) {
+                try {
+                    // Atualiza o estoque principal (consumedQuantity)
+                    await recordUsage(tx.itemId, tx.newConsumedQuantity);
+                    
+                    // Registra a Transação de Histórico
+                    if (transactionsColRef) {
+                        await addDoc(transactionsColRef, {
+                            transactionId: transactionId,
+                            itemId: tx.itemId,
+                            itemName: tx.itemName,
+                            quantityUsed: tx.deltaQuantity,
+                            itemUnit: tx.unit,
+                            timestamp: serverTimestamp()
+                        });
+                        successCount++;
+                    }
+                } catch (error) {
+                    console.error("Erro ao processar transação:", error);
+                    errorCount++;
+                }
+            }
+
+            // 3. Feedback Final
+            submitUsageBtnEl.disabled = false;
+            submitUsageBtnEl.textContent = 'Registrar Todas as Baixas';
+
+            if (errorCount > 0) {
+                showConfirmationModal("Erro Parcial", `Baixa concluída com ${successCount} sucesso(s) e ${errorCount} falha(s). Verifique o console.`, () => {});
+            } else {
+                showConfirmationModal("Sucesso", `Todas as ${successCount} baixas foram registradas sob o ID: ${transactionId}.`, () => {
+                    // Limpa o container de itens após sucesso
+                    itemUsageContainerEl.innerHTML = '';
+                    noItemsMessageEl.classList.remove('hidden');
+                    transactionIdEl.value = '';
+                    checkUsageContainerState();
+                });
+            }
+        });
+
+        // 3. Listener para o botão Adicionar Item
+        addItemLineBtnEl.addEventListener('click', addItemLine);
+
+        // 4. Listeners para a Busca de Histórico
+        searchHistoryBtn.addEventListener('click', searchHistory);
+        searchTransactionIdEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                searchHistory();
+            }
+        });
+
+    </script>
+</body>
+</html>
